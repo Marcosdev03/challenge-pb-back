@@ -1,14 +1,14 @@
 const bcrypt = require('bcryptjs');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
-const { User, Movie, Theater, Session } = require('../models');
-const connectDB = require('../config/db');
+const { User, Movie, Theater, Session } = require('../models'); // Verifique se o caminho está correto
+const connectDB = require('../config/db'); // Verifique se o caminho está correto
 
-// Load environment variables
 dotenv.config();
 
-// Sample data
-const users = [
+// --- DADOS DE BASE QUE QUEREMOS GARANTIR QUE EXISTAM ---
+
+const usersData = [
   {
     name: 'Admin User',
     email: 'admin@example.com',
@@ -23,7 +23,7 @@ const users = [
   }
 ];
 
-const movies = [
+const moviesData = [
   {
     customId: '1',
     title: 'Inception',
@@ -59,7 +59,7 @@ const movies = [
   }
 ];
 
-const theaters = [
+const theatersData = [
   {
     name: 'Theater 1',
     capacity: 120,
@@ -77,96 +77,57 @@ const theaters = [
   }
 ];
 
-// Function to generate seats based on theater capacity
-const generateSeats = (capacity) => {
-  const seats = [];
-  const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-  const seatsPerRow = Math.ceil(capacity / rows.length);
-  
-  for (let i = 0; i < rows.length; i++) {
-    for (let j = 1; j <= seatsPerRow; j++) {
-      if (seats.length < capacity) {
-        seats.push({
-          row: rows[i],
-          number: j,
-          status: 'available'
-        });
-      }
-    }
-  }
-  
-  return seats;
-};
 
-// Function to seed database
+// --- FUNÇÃO PRINCIPAL "INTELIGENTE" ---
+
 const seedDatabase = async () => {
   try {
-    // Connect to database
     await connectDB();
-    
-    // Clear existing data
-    await User.deleteMany({});
-    await Movie.deleteMany({});
-    await Theater.deleteMany({});
-    await Session.deleteMany({});
-    
-    console.log('Previous data cleared');
-    
-    // Create users
-    const createdUsers = await User.insertMany(users);
-    console.log(`${createdUsers.length} users created`);
-    
-    // Create movies
-    const createdMovies = await Movie.insertMany(movies);
-    console.log(`${createdMovies.length} movies created`);
-    
-    // Create theaters
-    const createdTheaters = await Theater.insertMany(theaters);
-    console.log(`${createdTheaters.length} theaters created`);
-    
-    // Create sessions
-    const sessions = [];
-    
-    // Generate sessions for the next 7 days
-    for (let i = 0; i < 7; i++) {
-      const date = new Date();
-      date.setDate(date.getDate() + i);
-      
-      // For each movie
-      for (let movie of createdMovies) {
-        // For each theater
-        for (let theater of createdTheaters) {
-          // Create 2-3 sessions per day
-          const numSessions = Math.floor(Math.random() * 2) + 2; // 2-3 sessions
-          
-          for (let j = 0; j < numSessions; j++) {
-            const hours = 12 + j * 4; // Sessions at 12pm, 4pm, 8pm
-            const sessionDate = new Date(date);
-            sessionDate.setHours(hours, 0, 0, 0);
-            
-            sessions.push({
-              movie: movie._id,
-              theater: theater._id,
-              datetime: sessionDate,
-              fullPrice: 15.0,
-              halfPrice: 7.5,
-              seats: generateSeats(theater.capacity)
-            });
-          }
-        }
+    console.log('Conectado ao banco de dados...');
+
+    // --- 1. Sincronizando Usuários (Cria se não existir) ---
+    for (const userData of usersData) {
+      const existingUser = await User.findOne({ email: userData.email });
+      if (!existingUser) {
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(userData.password, salt);
+        await User.create({ ...userData, password: hashedPassword });
+        console.log(`✅ Usuário '${userData.name}' criado.`);
+      } else {
+        console.log(`ℹ️ Usuário '${userData.name}' já existe. Pulando.`);
       }
     }
-    
-    const createdSessions = await Session.insertMany(sessions);
-    console.log(`${createdSessions.length} sessions created`);
-    
-    console.log('Database seeded successfully');
+
+    // --- 2. Sincronizando Filmes (Cria se não existir) ---
+    for (const movieData of moviesData) {
+      const existingMovie = await Movie.findOne({ customId: movieData.customId });
+      if (!existingMovie) {
+        await Movie.create(movieData);
+        console.log(`✅ Filme '${movieData.title}' criado.`);
+      } else {
+        console.log(`ℹ️ Filme '${movieData.title}' já existe. Pulando.`);
+      }
+    }
+
+    // --- 3. Sincronizando Salas (Cria se não existir) ---
+    for (const theaterData of theatersData) {
+      const existingTheater = await Theater.findOne({ name: theaterData.name });
+      if (!existingTheater) {
+        await Theater.create(theaterData);
+        console.log(`✅ Sala '${theaterData.name}' criada.`);
+      } else {
+        console.log(`ℹ️ Sala '${theaterData.name}' já existe. Pulando.`);
+      }
+    }
+
+    console.log('\nSincronização de dados base concluída com sucesso!');
     process.exit(0);
+
   } catch (error) {
-    console.error('Error seeding database:', error);
+    console.error('❌ Erro durante o processo de seed:', error);
     process.exit(1);
   }
 };
 
-// Run the seed function
+// Executa a função
 seedDatabase();
